@@ -1,0 +1,38 @@
+name: 抓取颱風資料
+
+on:
+  schedule:
+    # GitHub 的排程是 UTC，實際執行常會延遲數分鐘
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 抓取官方資料
+        run: node scraper/scrape.mjs
+      - name: 有變動才提交
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "資料沒有變動"
+          else
+            git commit -m "更新颱風資料 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
+            git pull --rebase
+            git push
+          fi
