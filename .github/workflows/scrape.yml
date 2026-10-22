@@ -2,8 +2,8 @@ name: 抓取颱風資料
 
 on:
   schedule:
-    # GitHub 的排程是 UTC，實際執行常會延遲數分鐘
-    - cron: '*/30 * * * *'
+    # GitHub 排程最短每 5 分鐘，實際執行常會延遲數分鐘
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 permissions:

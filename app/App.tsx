@@ -22,7 +22,8 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number]['k'];
 
-const REFRESH_MS = 5 * 60 * 1000;
+// app 開著時每分鐘檢查一次新資料
+const REFRESH_MS = 60 * 1000;
 
 function Main() {
   const insets = useSafeAreaInsets();

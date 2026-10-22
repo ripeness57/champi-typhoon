@@ -3,7 +3,7 @@
 整理中央氣象署與人事行政總處的公開資料：颱風現況、路徑預報、侵襲機率、風雨預報、實測雨量與停班停課。
 
 - `scraper/scrape.mjs`：抓取官方資料，輸出 `data/latest.json` 與觀測路徑 `data/track.json`。不需要任何套件，Node 22 以上可直接執行：`node scraper/scrape.mjs`
-- `.github/workflows/scrape.yml`：每 30 分鐘在 GitHub Actions 執行一次抓取，有變動才提交。
+- `.github/workflows/scrape.yml`：每 5 分鐘在 GitHub Actions 執行一次抓取（GitHub 排程的最短間隔），有變動才提交。
 - `app/`：Expo（React Native）app，讀取這個倉庫的 `data/latest.json`。
 - `.github/workflows/build-apk.yml`：`app/` 有變動時打包 APK，發布到 Releases 的 `latest`。
 

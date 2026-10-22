@@ -141,7 +141,7 @@ export default function StatusScreen({ d, myCounty }: { d: TyphoonData; myCounty
             </View>
           );
         })}
-        <Text style={[S.note, { marginTop: 6 }]}>資料每 30 分鐘自動抓取一次，最終以中央氣象署與各縣市政府公告為準。</Text>
+        <Text style={[S.note, { marginTop: 6 }]}>雲端每 5 分鐘抓取一次官方資料（GitHub 排程可能延遲），app 開著時每分鐘檢查一次。最終以中央氣象署與各縣市政府公告為準。</Text>
       </Card>
     </View>
   );
