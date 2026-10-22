@@ -95,7 +95,7 @@ export default function StatusScreen({ d, myCounty }: { d: TyphoonData; myCounty
           <CardHead label="颱風現況" src={`第${w?.report}報 · ${fmtTime(cur.time)}`} />
           <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
             <Stat label="中心氣壓" value={cur.pressure} unit="hPa" />
-            <Stat label="移動" value={(cur.movement?.match(/(\d+)公里/) || [])[1]} unit="km/h" sub={cur.movement?.replace(/^以每小時\d+公里速度，?/, '').replace(/進行$/, '')} />
+            <Stat label="移動" value={(cur.movement?.match(/(\d+)公里/) || [])[1]} unit="km/h" sub={cur.movement?.replace(/^以每小時.*?速度，?/, '').replace(/進行$/, '')} />
             <Stat label="近中心風速" value={cur.wind} unit="m/s" sub={cur.windLevel ? `${cur.windLevel} 級` : null} />
             <Stat label="瞬間陣風" value={cur.gust} unit="m/s" sub={cur.gustLevel ? `${cur.gustLevel} 級` : null} />
             <Stat label="七級暴風半徑" value={cur.r7} unit="km" color={C.amber} sub={quadText(cur.r7quad)} />
