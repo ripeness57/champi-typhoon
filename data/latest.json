@@ -1,28 +1,33 @@
 {
  "sources": {
   "warning": {
-   "ok": true,
-   "at": "2026-10-28T13:57:28.058Z",
+   "ok": false,
+   "at": "2026-10-28T19:27:31.806Z",
+   "error": "fetch failed",
    "lastOk": "2026-10-28T13:57:28.058Z"
   },
   "news": {
-   "ok": true,
-   "at": "2026-10-28T13:57:28.596Z",
+   "ok": false,
+   "at": "2026-10-28T19:27:33.820Z",
+   "error": "fetch failed",
    "lastOk": "2026-10-28T13:57:28.596Z"
   },
   "wpps": {
-   "ok": true,
-   "at": "2026-10-28T13:57:29.467Z",
+   "ok": false,
+   "at": "2026-10-28T19:27:35.833Z",
+   "error": "fetch failed",
    "lastOk": "2026-10-28T13:57:29.467Z"
   },
   "dgpa": {
-   "ok": true,
-   "at": "2026-10-28T13:57:30.200Z",
+   "ok": false,
+   "at": "2026-10-28T19:27:38.551Z",
+   "error": "fetch failed",
    "lastOk": "2026-10-28T13:57:30.200Z"
   },
   "rain": {
-   "ok": true,
-   "at": "2026-10-28T13:57:31.992Z",
+   "ok": false,
+   "at": "2026-10-28T19:27:40.559Z",
+   "error": "fetch failed",
    "lastOk": "2026-10-28T13:57:31.992Z"
   }
  },
