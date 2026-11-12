@@ -7,6 +7,22 @@
 - `app/`：Expo（React Native）app，讀取這個倉庫的 `data/latest.json`。
 - `.github/workflows/build-apk.yml`：`app/` 有變動時打包 APK，發布到 Releases 的 `latest`。
 
+## 股市分頁：族群籌碼分析
+
+app 的「股市」分頁把台股依題材分成數十個族群，用證交所、櫃買中心、集保結算所的公開資料算出：
+
+- 族群的 20 日強弱分數與排名、排名變化、今天上漲家數，以及「疑似出貨／大戶進駐／轉強／轉弱」標籤。
+- 每檔股票的三顆燈號（外資、投信、自營商：圓點是當日買賣超，箭頭是近 5 日合計）、「大戶跑／大戶進」與「避開×N」標籤，點開可看法人買賣超、融資、月線乖離與大戶持股。
+- 可以用代號或名稱搜尋，自選股只存在手機上。
+
+相關檔案：
+
+- `scraper/themes.json`：族群分類，可以自己增減族群或股票（每檔寫成「代號 名稱」）。
+- `scraper/stocks.mjs`：抓取資料並計算，輸出 `data/stocks.json`。每個交易日的原始資料存成 `data/stocks/days/YYYYMMDD.json`（保留 60 個交易日，缺的日子會自動往回補），集保大戶持股每週一份存在 `data/stocks/tdcc/`。所有判斷門檻都集中在檔案裡的 `RULE`。執行方式：`node scraper/stocks.mjs`；加上 `--no-fetch` 只用已存的資料重算。
+- `.github/workflows/stocks.yml`：每個交易日台灣時間 17:35、21:50 與隔天 08:10 各執行一次。
+
+「大戶」是用三大法人的買賣超推估的，看不到一般大額投資人的進出。所有標籤都是依固定規則算出來的，僅供參考，不是投資建議。
+
 ## 安裝
 
 到 Releases 下載 `typhoon-app.apk`，在 Android 手機上安裝（需允許安裝未知來源的應用程式）。
@@ -20,7 +36,8 @@ APK 用 `ANDROID_KEYSTORE_BASE64`、`ANDROID_KEYSTORE_PASSWORD` 兩個 Actions s
 ```bash
 cd app
 npm install
-cp ../data/latest.json public/latest.json
+mkdir -p public
+cp ../data/latest.json ../data/stocks.json public/
 npx expo start --web
 ```
 

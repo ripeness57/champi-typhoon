@@ -1,0 +1,46 @@
+name: 更新股市籌碼資料
+
+on:
+  schedule:
+    # 台灣時間 17:35（法人公布後）、21:50（融資公布後）、隔天 08:10（補抓，週六這次會抓到集保大戶持股）
+    - cron: '35 9 * * 1-5'
+    - cron: '50 13 * * 1-5'
+    - cron: '10 0 * * 2-6'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stocks
+  cancel-in-progress: false
+
+jobs:
+  stocks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 抓取交易所資料並計算
+        run: node scraper/stocks.mjs
+      - name: 有變動才提交
+        # 就算上一步中途失敗，已經抓到的日子也先存起來，下次接著補
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "資料沒有變動"
+            exit 0
+          fi
+          git commit -m "更新股市資料 $(TZ=Asia/Taipei date '+%m/%d %H:%M')"
+          # 颱風資料每 5 分鐘也會提交，推不上去就重新接上再試
+          for i in 1 2 3 4 5; do
+            if git pull --rebase && git push; then exit 0; fi
+            sleep 5
+          done
+          exit 1
