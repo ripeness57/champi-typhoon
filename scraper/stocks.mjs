@@ -22,6 +22,7 @@ const UA = 'tw-stock-data-scraper/1.0';
 
 const KEEP_DAYS = 60;   // 保留的交易日數
 const KEEP_WEEKS = 8;   // 保留幾週的集保資料
+const MARGIN_DAYS = 10; // 融資只用來算近 5 日增減，回補歷史時只抓最近這幾個交易日
 const STOCK = /^[1-9]\d{3}$/; // 一般股票（排除 ETF、權證）
 
 // ───── 小工具 ─────
@@ -62,7 +63,7 @@ async function readJson(file, fallback) {
 // ───── 連線：每個網站各自限速 ─────
 // 證交所短時間內連太多次會暫時擋人（回 3xx 或一頁 HTML）。這時再試只會被擋更久，
 // 所以直接停手，已抓到的日子都存好了，下次執行會接著補。
-const GAP = { 'www.twse.com.tw': 5000, 'www.tpex.org.tw': 1200 };
+const GAP = { 'www.twse.com.tw': 20000, 'www.tpex.org.tw': 1200 };
 const lastHit = {};
 
 async function request(url, parse) {
@@ -216,8 +217,8 @@ async function tpexMargin(date) {
 
 // ───── 每日資料檔 ─────
 // day = { date, parts: { tq, oq, ti, oi, tm, om }, taiex: [收盤, 漲跌%], s: { 代號: [收盤, 漲跌, 成交張, 外資, 投信, 自營, 融資餘額, 融券餘額] } }
-// parts 的 t / o 是上市 / 上櫃，q / i / m 是行情 / 法人 / 融資
-const complete = (day) => ['tq', 'oq', 'ti', 'oi', 'tm', 'om'].every((k) => day.parts[k]);
+// parts 記錄已經抓到哪幾部分：t / o 是上市 / 上櫃，q / i / m 是行情 / 法人 / 融資
+const missing = (day, margin) => ['tq', 'oq', 'ti', 'oi', ...(margin ? ['tm', 'om'] : [])].filter((k) => !day.parts[k]);
 
 const dayText = (day) => {
   const rows = Object.keys(day.s).sort().map((k) => `${JSON.stringify(k)}:${JSON.stringify(day.s[k])}`);
@@ -241,7 +242,7 @@ async function loadDays() {
 
 // 抓一天的資料，每抓到一部分就呼叫 save 存檔，中途被擋下也不會白抓。
 // have 是已存但還缺法人或融資的那一天。當天沒有行情（休市或還沒公布）回傳 null。
-async function fetchDay(date, have, names, today, save) {
+async function fetchDay(date, have, names, today, margin, save) {
   const day = have ?? { date, parts: {}, taiex: null, s: {} };
   const p = day.parts;
   if (!p.tq || !p.oq) {
@@ -280,9 +281,11 @@ async function fetchDay(date, have, names, today, save) {
     await save(day);
   };
   await part('oi', tpexInsti, 3);
-  await part('om', tpexMargin, 6);
   await part('ti', twseInsti, 3);
-  await part('tm', twseMargin, 6);
+  if (margin) {
+    await part('om', tpexMargin, 6);
+    await part('tm', twseMargin, 6);
+  }
   return day;
 }
 
@@ -299,13 +302,15 @@ async function syncDays(days, meta, names) {
   for (let back = 0, date = today; count < KEEP_DAYS && back < KEEP_DAYS * 2; back++, date = addDays(date, -1)) {
     if (toDate(date).getUTCDay() === 0 || closed.has(date)) continue;
     const have = days.get(date);
-    if (have && complete(have)) { count++; continue; }
+    const margin = count < MARGIN_DAYS;
+    if (have && !missing(have, margin).length) { count++; continue; }
     const before = have ? JSON.stringify(have.parts) : null;
-    const day = await fetchDay(date, have, names, today, save);
+    const day = await fetchDay(date, have, names, today, margin, save);
     if (day) {
       count++;
       if (JSON.stringify(day.parts) !== before) {
-        console.log(`${date} ${have ? '補齊' : '新增'}：${Object.keys(day.s).length} 檔${complete(day) ? '' : `（還缺 ${['ti', 'oi', 'tm', 'om'].filter((k) => !day.parts[k]).join(' ')}）`}`);
+        const lack = missing(day, margin);
+        console.log(`${date} ${have ? '補齊' : '新增'}：${Object.keys(day.s).length} 檔${lack.length ? `（還缺 ${lack.join(' ')}）` : ''}`);
       }
     } else if (date < today) {
       closed.add(date);
