@@ -1,13 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TyphoonData } from './types';
-import { DATA_URL } from './config';
+import { DATA_URL, NO_CACHE } from './config';
 
 const CACHE_KEY = 'champi:data';
 const SETTINGS_KEY = 'champi:settings';
 
 export async function fetchData(): Promise<TyphoonData> {
   // 加上時間參數避開 CDN 快取
-  const res = await fetch(`${DATA_URL}?t=${Math.floor(Date.now() / 60000)}`, { headers: { 'Cache-Control': 'no-cache' } });
+  const res = await fetch(`${DATA_URL}?t=${Math.floor(Date.now() / 60000)}`, NO_CACHE);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = (await res.json()) as TyphoonData;
   await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(d)).catch(() => {});

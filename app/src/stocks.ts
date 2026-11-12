@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STOCKS_URL } from './config';
+import { NO_CACHE, STOCKS_URL } from './config';
 
 // 與 scraper/stocks.mjs 產生的 data/stocks.json 對應
 export interface StockRow {
@@ -72,7 +72,7 @@ const FAV_KEY = 'champi:stockFav';
 
 export async function fetchStocks(): Promise<StockData> {
   // 一天只更新幾次，時間參數用 5 分鐘一格就夠
-  const res = await fetch(`${STOCKS_URL}?t=${Math.floor(Date.now() / 300000)}`, { headers: { 'Cache-Control': 'no-cache' } });
+  const res = await fetch(`${STOCKS_URL}?t=${Math.floor(Date.now() / 300000)}`, NO_CACHE);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const d = (await res.json()) as StockData;
   await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(d)).catch(() => {});

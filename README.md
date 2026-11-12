@@ -25,7 +25,13 @@ app 的「股市」分頁把台股依題材分成數十個族群，用證交所�
 
 ## 安裝
 
-到 Releases 下載 `typhoon-app.apk`，在 Android 手機上安裝（需允許安裝未知來源的應用程式）。
+Android：到 Releases 下載 `typhoon-app.apk`，在手機上安裝（需允許安裝未知來源的應用程式）。
+
+iPhone 或電腦：用瀏覽器開網頁版 `https://帳號.github.io/倉庫名稱/`。在 iPhone 的 Safari 按「分享」→「加入主畫面」，之後就能像 app 一樣從主畫面打開。網頁版關掉後收不到通知。
+
+## 網頁版
+
+`.github/workflows/pages.yml` 在 `app/` 有變動時把 app 輸出成網頁，發布到 GitHub Pages。第一次要先到倉庫的 Settings → Pages，把 Source 選成「GitHub Actions」。
 
 ## 簽章
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, Text, ToastAndroid, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, RefreshControl, ScrollView, Text, ToastAndroid, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { TyphoonData } from './src/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DEFAULT_SETTINGS, cachedData, fetchData, loadSettings, saveSettings, type Settings } from './src/data';
 import { checkAndNotify, registerBackground, setupNotifications } from './src/notify';
 import { C } from './src/theme';
@@ -27,10 +28,16 @@ type Tab = (typeof TABS)[number]['k'];
 
 // app 開著時每分鐘檢查一次新資料
 const REFRESH_MS = 60 * 1000;
+// 記住上次看的分頁，下次打開直接回到那裡
+const TAB_KEY = 'champi:tab';
 
 function Main() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('status');
+  const pickTab = (t: Tab) => {
+    setTab(t);
+    AsyncStorage.setItem(TAB_KEY, t).catch(() => {});
+  };
   const [data, setData] = useState<TyphoonData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,6 +87,8 @@ function Main() {
 
   useEffect(() => {
     (async () => {
+      const last = await AsyncStorage.getItem(TAB_KEY).catch(() => null);
+      if (TABS.some((t) => t.k === last)) setTab(last as Tab);
       setSettings(await loadSettings());
       setFavs(await loadFavs());
       const cs = await cachedStocks();
@@ -106,7 +115,7 @@ function Main() {
   };
   const pickCounty = (c: string) => {
     changeSettings({ ...settings, county: c });
-    ToastAndroid.show(`已設定我的縣市：${c}`, ToastAndroid.SHORT);
+    if (Platform.OS === 'android') ToastAndroid.show(`已設定我的縣市：${c}`, ToastAndroid.SHORT);
   };
 
   // 股市分頁用自己的資料，不受颱風資料有沒有抓到影響
@@ -157,7 +166,7 @@ function Main() {
       )}
       <View style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: C.line, backgroundColor: C.panel, paddingBottom: insets.bottom }}>
         {TABS.map((t) => (
-          <Pressable key={t.k} onPress={() => setTab(t.k)} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }} accessibilityRole="tab" accessibilityState={{ selected: tab === t.k }}>
+          <Pressable key={t.k} onPress={() => pickTab(t.k)} style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }} accessibilityRole="tab" accessibilityState={{ selected: tab === t.k }}>
             <Text style={{ color: tab === t.k ? C.cyan : C.mute, fontSize: 14, fontWeight: tab === t.k ? '700' : '400' }}>{t.label}</Text>
             {tab === t.k ? <View style={{ position: 'absolute', top: 0, left: '25%', right: '25%', height: 2, backgroundColor: C.cyan }} /> : null}
           </Pressable>
