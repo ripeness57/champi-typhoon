@@ -58,7 +58,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: 颱風戰情室 最新版
+          name: 籌碼戰情室 最新版
           body: |
             下載下方的 typhoon-app.apk 到 Android 手機安裝。
             第一次安裝要允許「安裝未知來源的應用程式」。

@@ -16,12 +16,13 @@ import WeatherScreen from './src/screens/WeatherScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import StockScreen from './src/screens/StockScreen';
 
+// 股市放最前面；現況、路徑、縣市、風雨是颱風資料
 const TABS = [
-  { k: 'status', label: '現況' },
+  { k: 'stock', label: '股市' },
+  { k: 'status', label: '颱風' },
   { k: 'map', label: '路徑' },
   { k: 'county', label: '縣市' },
   { k: 'weather', label: '風雨' },
-  { k: 'stock', label: '股市' },
   { k: 'settings', label: '設定' },
 ] as const;
 type Tab = (typeof TABS)[number]['k'];
@@ -33,7 +34,7 @@ const TAB_KEY = 'champi:tab';
 
 function Main() {
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<Tab>('status');
+  const [tab, setTab] = useState<Tab>('stock');
   const pickTab = (t: Tab) => {
     setTab(t);
     AsyncStorage.setItem(TAB_KEY, t).catch(() => {});

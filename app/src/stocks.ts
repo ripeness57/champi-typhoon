@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NO_CACHE, STOCKS_URL } from './config';
+import { NO_CACHE, SERIES_URL, STOCKS_ALL_URL, STOCKS_URL } from './config';
 
 // 與 scraper/stocks.mjs 產生的 data/stocks.json 對應
 export interface StockRow {
@@ -29,6 +29,9 @@ export interface StockRow {
   big: [number, number | null] | null;
   tags: string[];
   avoid: string[];
+  /** 今天才新出現的標籤、警訊（和前一個交易日相比） */
+  nt?: string[];
+  na?: string[];
 }
 
 export interface Sector {
@@ -50,6 +53,26 @@ export interface Sector {
   buy: number;
   hist: number[];
   stocks: string[];
+  /** 標籤和前一個交易日不同時，這裡是前一天的標籤 */
+  was?: string | null;
+}
+
+/** 過去每次出現標籤之後 fwd 個交易日的表現 */
+export interface Stats {
+  fwd: number;
+  from: string;
+  to: string;
+  days: number;
+  /** avg 平均漲跌 %、ex 和同一天全部股票平均的差距、win 上漲機率 % */
+  rows: { k: string; n: number; avg: number; ex: number; win: number }[];
+}
+
+export interface Series {
+  dates: string[];
+  /** 收盤價，上市前是 null */
+  c: (number | null)[];
+  /** 三大法人合計買賣超張數 */
+  i: number[];
 }
 
 export interface StockData {
@@ -62,6 +85,7 @@ export interface StockData {
   days: number;
   taiex: [number, number] | null;
   rule: Record<string, number>;
+  stats?: Stats | null;
   sectors: Sector[];
   stocks: Record<string, StockRow>;
   errors?: string[];
@@ -85,6 +109,47 @@ export async function cachedStocks(): Promise<StockData | null> {
     return s ? (JSON.parse(s) as StockData) : null;
   } catch {
     return null;
+  }
+}
+
+const bucket = () => Math.floor(Date.now() / 300000);
+
+// 族群以外的上市櫃股票。檔案裡每檔是一列陣列，欄位順序見 scraper/stocks.mjs 的 REST_FIELDS
+let rest: { ver: string; s: Record<string, StockRow> } | null = null;
+export async function fetchRest(ver: string): Promise<Record<string, StockRow>> {
+  if (rest?.ver === ver) return rest.s;
+  const res = await fetch(`${STOCKS_ALL_URL}?t=${bucket()}`, NO_CACHE);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const raw = (await res.json()) as { s: Record<string, any[]> };
+  const s: Record<string, StockRow> = {};
+  for (const [code, r] of Object.entries(raw.s)) {
+    s[code] = {
+      n: r[0], m: r[1] ? 'tpex' : 'twse', c: r[2], p: r[3], v: r[4], r5: r[5], r20: r[6], ma: r[7], vr: r[8],
+      f: [r[9], r[10]], t: [r[11], r[12]], d: [r[13], r[14]], i5: r[15], sd: r[16], mg: r[17], big: r[18], tags: r[19], avoid: r[20],
+    };
+  }
+  rest = { ver, s };
+  return s;
+}
+
+// 個股走勢：同一個檔案裡有幾十檔，抓過就留在記憶體
+const chunks = new Map<string, Promise<{ dates: string[]; s: Record<string, [(number | null)[], number[]]> }>>();
+export async function fetchSeries(code: string, ver: string): Promise<Series | null> {
+  const prefix = code.slice(0, 2);
+  const key = `${prefix}:${ver}`;
+  if (!chunks.has(key)) {
+    chunks.set(key, fetch(`${SERIES_URL}/${prefix}.json?t=${bucket()}`, NO_CACHE).then((res) => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }));
+  }
+  try {
+    const chunk = await chunks.get(key)!;
+    const row = chunk.s[code];
+    return row ? { dates: chunk.dates, c: row[0], i: row[1] } : null;
+  } catch (e) {
+    chunks.delete(key); // 失敗的不留著，下次點開再試
+    throw e;
   }
 }
 

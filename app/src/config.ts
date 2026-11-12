@@ -11,3 +11,6 @@ const DEV_WEB = __DEV__ && Platform.OS === 'web';
 export const NO_CACHE: RequestInit = Platform.OS === 'web' ? { cache: 'no-store' } : { headers: { 'Cache-Control': 'no-cache' } };
 export const DATA_URL = DEV_WEB ? '/latest.json' : REMOTE;
 export const STOCKS_URL = DEV_WEB ? '/stocks.json' : REMOTE_STOCKS;
+// 族群以外的上市櫃股票，以及個股走勢（依代號前兩碼分檔），用到時才抓
+export const STOCKS_ALL_URL = STOCKS_URL.replace('stocks.json', 'stocks-all.json');
+export const SERIES_URL = STOCKS_URL.replace('stocks.json', 'stocks/series');

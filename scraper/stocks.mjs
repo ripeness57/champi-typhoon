@@ -1,4 +1,5 @@
-// 抓取證交所、櫃買中心、集保結算所的公開資料，算出族群籌碼分析，輸出 data/stocks.json。
+// 抓取證交所、櫃買中心、集保結算所的公開資料，算出族群籌碼分析。
+// 輸出 data/stocks.json（族群與族群內的股票）、data/stocks-all.json（其他上市櫃股票）、data/stocks/series/（個股走勢）。
 // 每個交易日的原始資料存成 data/stocks/days/YYYYMMDD.json，缺的日子會自動往回補抓。
 // 不需要任何套件，Node 22 以上可直接執行：node scraper/stocks.mjs
 //   --no-fetch   不連線，只用已存的資料重新計算
@@ -14,6 +15,8 @@ const TDCC_DIR = path.join(STOCK_DIR, 'tdcc');
 const META = path.join(STOCK_DIR, 'meta.json');
 const NAMES = path.join(STOCK_DIR, 'names.json');
 const OUT = path.join(DATA_DIR, 'stocks.json');
+const REST = path.join(DATA_DIR, 'stocks-all.json');
+const SERIES_DIR = path.join(STOCK_DIR, 'series');
 
 const TWSE = 'https://www.twse.com.tw/rwd/zh';
 const TPEX = 'https://www.tpex.org.tw/www/zh-tw';
@@ -473,12 +476,18 @@ function sectorScore(S, codes, T, Ti) {
   return 30 * above + 30 * clamp01((ret20 + 15) / 30) + 25 * clamp01((flow20 + 6) / 12) + 15 * breadth;
 }
 
+// 把訊號歸類，方便跨日比較（「法人連賣 4 日」和「法人連賣 3 日」算同一種）
+const kind = (text) => text.replace(/\s*\d+\s*日$/, '');
+const FWD = 5; // 統計標籤之後幾個交易日的表現
+
 function analyze(days, themes, names, weeks) {
   const T = days.length - 1;
   const lastWith = (keys) => { for (let i = T; i >= 0; i--) if (keys.every((k) => days[i].parts[k])) return i; return -1; };
   const Ti = lastWith(['ti', 'oi']);
   const Tm = lastWith(['tm', 'om']);
   if (T < 20 || Ti < 5 || Tm < 5) throw new Error(`歷史資料不足（${days.length} 天）`);
+  // 當天的法人、融資還沒公布時，行情會比它們新幾天；回頭算以前的日子時也保持同樣的落差
+  const lagI = T - Ti, lagM = T - Tm;
 
   const missing = [];
   const sectorsIn = themes.map((th) => ({
@@ -491,37 +500,58 @@ function analyze(days, themes, names, weeks) {
   })).filter((x) => x.codes.length);
   if (missing.length) console.warn(`這些代號在最新行情裡找不到，已略過：${missing.join('、')}`);
 
-  const codes = [...new Set(sectorsIn.flatMap((x) => x.codes))];
-  const S = buildSeries(days, codes);
+  const uni = [...new Set(sectorsIn.flatMap((x) => x.codes))];       // 族群裡的股票
+  const all = Object.keys(days[T].s).filter((c) => names.s[c]).sort(); // 全部上市櫃股票
+  const S = buildSeries(days, all);
   const w1 = weeks.at(-1), w0 = weeks.at(-2);
-
-  const stocks = {};
-  for (const code of codes) {
+  const bigOf = (code) => {
     const b1 = w1?.s[code], b0 = w0?.s[code];
-    const big = b1 ? [b1[0], b0 ? round(b1[0] - b0[0]) : null] : null;
-    const m = stockAt(S[code], T, Ti, Tm, big);
-    if (m) stocks[code] = { n: names.s[code][0], m: names.s[code][1], ...m };
+    return b1 ? [b1[0], b0 ? round(b1[0] - b0[0]) : null] : null;
+  };
+
+  // 族群裡每一檔、每一天的訊號：用來和昨天比較、統計標籤之後的表現
+  const t0 = 20 + lagI;
+  const sig = [];
+  for (let t = t0; t <= T; t++) {
+    sig[t] = new Map(uni.map((c) => [c, stockAt(S[c], t, t - lagI, t - lagM, bigOf(c))]).filter(([, m]) => m));
   }
 
-  // 每個族群往回算 20 天的分數與排名
-  const span = Math.min(20, T - 19, Ti + 1);
-  const scores = sectorsIn.map((x) => Array.from({ length: span }, (_, k) => sectorScore(S, x.codes, T - k, Ti - k)));
-  const rankAt = (k) => {
-    const order = scores.map((sc, i) => [sc[k], i]).sort((a, b) => b[0] - a[0]);
-    const rank = [];
-    order.forEach(([, i], pos) => { rank[i] = pos + 1; });
-    return rank;
-  };
-  const rank0 = rankAt(0);
-  const rank1 = span > 1 ? rankAt(1) : null;
-  const rank5 = span > 5 ? rankAt(5) : null;
+  // 每個族群每一天的分數、排名、標籤
+  const scores = [], ranks = [], tags = [];
+  for (let t = t0; t <= T; t++) {
+    scores[t] = sectorsIn.map((x) => sectorScore(S, x.codes, t, t - lagI));
+    ranks[t] = [];
+    scores[t].map((sc, i) => [sc, i]).sort((a, b) => b[0] - a[0]).forEach(([, i], pos) => { ranks[t][i] = pos + 1; });
+    tags[t] = sectorsIn.map((x, i) => {
+      const mem = x.codes.filter((c) => sig[t].has(c));
+      const share = (tag) => (mem.length >= 3 ? mem.filter((c) => sig[t].get(c).tags.includes(tag)).length / mem.length : 0);
+      const d5 = t - 5 >= t0 ? ranks[t - 5][i] - ranks[t][i] : null; // 正的是排名往前
+      if (share('大戶跑') >= RULE.sectorShare) return '疑似出貨';
+      if (share('大戶進') >= RULE.sectorShare) return '大戶進駐';
+      if (d5 != null && d5 >= RULE.rankMove && scores[t][i] >= 50) return '轉強';
+      if (d5 != null && d5 <= -RULE.rankMove && scores[t][i] < 50) return '轉弱';
+      return null;
+    });
+  }
+
+  // 今天的結果；nt、na 是今天才新出現的標籤與警訊
+  const stocks = {};
+  for (const [code, m] of sig[T]) {
+    const row = { n: names.s[code][0], m: names.s[code][1], ...m };
+    const prev = T - 1 >= t0 ? sig[T - 1].get(code) : null;
+    if (prev) {
+      const nt = m.tags.filter((x) => !prev.tags.includes(x));
+      const before = new Set(prev.avoid.map(kind));
+      const na = m.avoid.filter((x) => !before.has(kind(x)));
+      if (nt.length) row.nt = nt;
+      if (na.length) row.na = na;
+    }
+    stocks[code] = row;
+  }
 
   const sectors = sectorsIn.map((x, i) => {
     const mem = x.codes.filter((c) => stocks[c]);
-    const n = mem.length;
     const has = (tag) => mem.filter((c) => stocks[c].tags.includes(tag)).length;
-    const d5 = rank5 ? rank5[i] - rank0[i] : null; // 正的是排名往前
-    const score = scores[i][0];
     let net = 0, vol = 0;
     for (const c of mem) {
       for (let k = Math.max(0, Ti - 4); k <= Ti; k++) {
@@ -529,40 +559,103 @@ function analyze(days, themes, names, weeks) {
         vol += S[c].v[k] * (S[c].c[k] ?? 0);
       }
     }
-    let tag = null;
-    if (n >= 3 && has('大戶跑') / n >= RULE.sectorShare) tag = '疑似出貨';
-    else if (n >= 3 && has('大戶進') / n >= RULE.sectorShare) tag = '大戶進駐';
-    else if (d5 != null && d5 >= RULE.rankMove && score >= 50) tag = '轉強';
-    else if (d5 != null && d5 <= -RULE.rankMove && score < 50) tag = '轉弱';
-    return {
-      id: x.id, name: x.name, tag,
-      score: round(score, 1), rank: rank0[i],
-      d1: rank1 ? rank1[i] - rank0[i] : null, d5,
-      up: mem.filter((c) => stocks[c].p > 0).length, n,
+    const sec = {
+      id: x.id, name: x.name, tag: tags[T][i],
+      score: round(scores[T][i], 1), rank: ranks[T][i],
+      d1: T - 1 >= t0 ? ranks[T - 1][i] - ranks[T][i] : null,
+      d5: T - 5 >= t0 ? ranks[T - 5][i] - ranks[T][i] : null,
+      up: mem.filter((c) => stocks[c].p > 0).length, n: mem.length,
       p: round(mean(mem.map((c) => stocks[c].p ?? 0))),
       r5: round(mean(mem.map((c) => stocks[c].r5)), 1),
       r20: round(mean(mem.map((c) => stocks[c].r20 ?? 0)), 1),
       flow5: round(vol > 0 ? (net / vol) * 100 : 0, 1),
       run: has('大戶跑'), buy: has('大戶進'),
-      hist: scores[i].map((v) => round(v, 1)).reverse(),
+      hist: scores.slice(Math.max(t0, T - 19)).map((sc) => round(sc[i], 1)),
       stocks: mem.sort((a, b) => (stocks[b].p ?? 0) - (stocks[a].p ?? 0)),
     };
+    // 標籤和昨天不一樣時，記下昨天的
+    if (T - 1 >= t0 && tags[T - 1][i] !== sec.tag) sec.was = tags[T - 1][i];
+    return sec;
   }).sort((a, b) => a.rank - b.rank);
 
+  // 統計：過去每一次出現標籤之後 FWD 個交易日的漲跌，和同一天全部股票的平均相比
+  const acc = new Map();
+  const add = (key, v, base) => {
+    const g = acc.get(key) ?? acc.set(key, { n: 0, sum: 0, ex: 0, win: 0 }).get(key);
+    g.n++; g.sum += v; g.ex += v - base; if (v > 0) g.win++;
+  };
+  const fwd = (code, t) => (win(S[code].r, t + FWD, FWD).reduce((x, r) => x * (1 + r), 1) - 1) * 100;
+  const streakKey = `法人連賣 ${RULE.streak} 日以上`;
+  for (let t = t0; t + FWD <= T; t++) {
+    const f = new Map([...sig[t].keys()].map((c) => [c, fwd(c, t)]));
+    const base = mean([...f.values()]);
+    for (const [c, m] of sig[t]) {
+      const v = f.get(c);
+      add('全部股票', v, base);
+      for (const tag of m.tags) add(tag, v, base);
+      for (const a of m.avoid) {
+        const k = kind(a);
+        // 融資、大戶持股只有最近的資料，樣本太少不列入
+        if (k === '法人連賣') add(streakKey, v, base);
+        else if (k === '跌破月線' || k === '爆量下跌') add(k, v, base);
+      }
+    }
+    sectorsIn.forEach((x, i) => {
+      if (!tags[t][i]) return;
+      const mem = x.codes.filter((c) => f.has(c));
+      if (mem.length) add(`族群：${tags[t][i]}`, mean(mem.map((c) => f.get(c))), base);
+    });
+  }
+  const order = ['全部股票', '大戶進', '大戶跑', streakKey, '爆量下跌', '跌破月線', '族群：大戶進駐', '族群：疑似出貨', '族群：轉強', '族群：轉弱'];
+  const stats = T - FWD >= t0 ? {
+    fwd: FWD,
+    from: days[t0].date, to: days[T - FWD].date, days: T - FWD - t0 + 1,
+    rows: order.filter((k) => acc.has(k)).map((k) => {
+      const g = acc.get(k);
+      return { k, n: g.n, avg: round(g.sum / g.n, 1), ex: round(g.ex / g.n, 1), win: Math.round((g.win / g.n) * 100) };
+    }),
+  } : null;
+
+  // 族群以外的上市櫃股票：只算今天，給「搜尋全部股票」用，欄位順序見 REST_FIELDS
+  const inUni = new Set(uni);
+  const rest = {};
+  for (const code of all) {
+    if (inUni.has(code)) continue;
+    const m = stockAt(S[code], T, Ti, Tm, bigOf(code));
+    if (m) rest[code] = [names.s[code][0], names.s[code][1] === 'twse' ? 0 : 1, m.c, m.p, m.v, m.r5, m.r20, m.ma, m.vr, ...m.f, ...m.t, ...m.d, m.i5, m.sd, m.mg, m.big, m.tags, m.avoid];
+  }
+
+  // 每一檔的收盤價與法人買賣超走勢，依代號前兩碼分檔，app 點開個股時才抓
+  const series = {};
+  for (const code of all) {
+    if (S[code].c[T] == null) continue;
+    (series[code.slice(0, 2)] ??= {})[code] = [S[code].c, S[code].inst.map((x) => x ?? 0)];
+  }
+
   return {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    date: days[T].date,
-    instDate: days[Ti].date,
-    marginDate: days[Tm].date,
-    holderDate: w1?.date ?? null,
-    days: days.length,
-    taiex: days[T].taiex,
-    rule: RULE,
-    sectors,
-    stocks,
+    out: {
+      version: 2,
+      updatedAt: new Date().toISOString(),
+      date: days[T].date,
+      instDate: days[Ti].date,
+      marginDate: days[Tm].date,
+      holderDate: w1?.date ?? null,
+      days: days.length,
+      taiex: days[T].taiex,
+      rule: RULE,
+      stats,
+      sectors,
+      stocks,
+    },
+    rest,
+    series,
+    dates: days.map((d) => d.date),
   };
 }
+
+const REST_FIELDS = ['n', 'm', 'c', 'p', 'v', 'r5', 'r20', 'ma', 'vr', 'f0', 'f5', 't0', 't5', 'd0', 'd5', 'i5', 'sd', 'mg', 'big', 'tags', 'avoid'];
+// 一檔一行，每天只有部分內容會變，git 存起來比較省
+const lines = (obj) => Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${JSON.stringify(obj[k])}`).join(',\n');
 
 // ───── 主程式 ─────
 async function main() {
@@ -587,22 +680,33 @@ async function main() {
   for (const d of dates.slice(0, -KEEP_DAYS)) await rm(path.join(DAYS_DIR, `${d}.json`));
   for (const w of weeks.slice(0, -KEEP_WEEKS)) await rm(path.join(TDCC_DIR, `${w.date}.json`));
 
-  let out;
+  let res;
   try {
-    out = analyze(dates.slice(-KEEP_DAYS).map((d) => days.get(d)), themes, names, weeks.slice(-KEEP_WEEKS));
+    res = analyze(dates.slice(-KEEP_DAYS).map((d) => days.get(d)), themes, names, weeks.slice(-KEEP_WEEKS));
   } catch (e) {
     // 第一次執行還沒補齊歷史資料時會到這裡，已抓到的日子都存好了，下次執行會接著補
     console.error(`無法計算：${e.message}`);
     process.exitCode = 1;
     return;
   }
+  const { out } = res;
   if (errors.length) out.errors = errors;
 
   // 內容沒變就不重寫，避免每次執行都產生一筆提交
   const prev = await readJson(OUT, null);
   const same = prev && JSON.stringify({ ...prev, updatedAt: 0 }) === JSON.stringify({ ...out, updatedAt: 0 });
   if (!same) await writeFile(OUT, JSON.stringify(out));
-  console.log(`${out.date}：${out.sectors.length} 個族群、${Object.keys(out.stocks).length} 檔${same ? '（沒有變動）' : ''}`);
+
+  await writeFile(REST, `{"date":"${out.date}","fields":${JSON.stringify(REST_FIELDS)},"s":{\n${lines(res.rest)}\n}}\n`);
+  await mkdir(SERIES_DIR, { recursive: true });
+  for (const f of await readdir(SERIES_DIR)) {
+    if (!res.series[f.replace(/\.json$/, '')]) await rm(path.join(SERIES_DIR, f));
+  }
+  for (const [prefix, group] of Object.entries(res.series)) {
+    await writeFile(path.join(SERIES_DIR, `${prefix}.json`), `{"dates":${JSON.stringify(res.dates)},"s":{\n${lines(group)}\n}}\n`);
+  }
+
+  console.log(`${out.date}：${out.sectors.length} 個族群、${Object.keys(out.stocks).length} 檔，另有 ${Object.keys(res.rest).length} 檔族群外股票${same ? '（沒有變動）' : ''}`);
 }
 
 await main();
