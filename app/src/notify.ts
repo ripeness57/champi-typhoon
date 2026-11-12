@@ -19,6 +19,7 @@ Notifications.setNotificationHandler({
 });
 
 export async function setupNotifications() {
+  if (Platform.OS === 'web') return; // 網頁版關掉頁面就收不到，不要求通知權限
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(CHANNEL, {
       name: '颱風警報與停班課',
@@ -29,8 +30,10 @@ export async function setupNotifications() {
   if (status !== 'granted') await Notifications.requestPermissionsAsync();
 }
 
-const notify = (title: string, body: string) =>
-  Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null });
+const notify = async (title: string, body: string) => {
+  if (Platform.OS === 'web') return;
+  await Notifications.scheduleNotificationAsync({ content: { title, body }, trigger: Platform.OS === 'android' ? { channelId: CHANNEL } : null });
+};
 
 // 和上次看過的資料比較，有新的颱風報、警報解除或「我的縣市」停班課變動時發通知
 export async function checkAndNotify(d: TyphoonData, silent = false) {

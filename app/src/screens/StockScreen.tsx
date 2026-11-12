@@ -286,7 +286,7 @@ export default function StockScreen({ d, favs, onFav }: { d: StockData; favs: st
         <TextInput
           value={q} onChangeText={setQ} placeholder="輸入代號或名稱" placeholderTextColor={C.dim}
           autoCorrect={false} autoCapitalize="none" returnKeyType="search" accessibilityLabel="搜尋股票"
-          style={{ flex: 1, minWidth: 0, color: C.fg, fontSize: 14, borderWidth: 1, borderColor: C.line2, backgroundColor: C.panel, borderRadius: 3, paddingHorizontal: 10, paddingVertical: 5, marginRight: 6, marginBottom: 6 }}
+          style={{ flex: 1, minWidth: 0, color: C.fg, fontSize: 16, borderWidth: 1, borderColor: C.line2, backgroundColor: C.panel, borderRadius: 3, paddingHorizontal: 10, paddingVertical: 5, marginRight: 6, marginBottom: 6 }}
         />
         <Btn label="說明" on={help} onPress={() => setHelp(!help)} />
       </View>

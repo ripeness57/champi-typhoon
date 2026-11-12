@@ -1,0 +1,58 @@
+name: 部署網頁版
+
+# 把 app 輸出成網頁，放到 GitHub Pages，iPhone 或電腦用瀏覽器就能開。
+# 需要先到倉庫的 Settings → Pages，把 Source 選成「GitHub Actions」。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: 設定資料來源為這個倉庫
+        run: sed -i "s#__GITHUB_REPO__#${GITHUB_REPOSITORY}#" src/config.ts && grep REMOTE src/config.ts
+      - name: 設定網址的子路徑
+        # 網址是 https://帳號.github.io/倉庫名稱/，檔案路徑前面要加上倉庫名稱
+        run: |
+          node -e "
+            const fs = require('fs');
+            const c = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            c.expo.experiments = { ...c.expo.experiments, baseUrl: '/' + process.env.GITHUB_REPOSITORY.split('/')[1] };
+            fs.writeFileSync('app.json', JSON.stringify(c, null, 2) + '\n');
+          "
+      - run: npm ci
+      - name: 輸出網頁
+        run: npx expo export --platform web
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+      - name: 發布到 GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
