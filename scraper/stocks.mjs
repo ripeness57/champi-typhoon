@@ -77,7 +77,7 @@ async function request(url, parse) {
     try {
       const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'zh-TW' }, redirect: 'manual', signal: AbortSignal.timeout(60000) });
       const text = await res.text();
-      if ((res.status >= 300 && res.status < 400) || /^\s*<(!doctype|html)/i.test(text)) {
+      if ((res.status >= 300 && res.status < 400) || (res.ok && /^\s*<(!doctype|html)/i.test(text))) {
         err = new Error(`被 ${host} 暫時擋下（HTTP ${res.status}）`);
         break;
       }

@@ -114,8 +114,8 @@ function StockDetail({ s }: { s: StockRow }) {
         <Mini label="量比" value={s.vr == null ? '-' : `${s.vr} 倍`} />
       </View>
       <View style={[S.row, { marginTop: 8 }]}>
-        <Mini label="成交量" value={`${comma(s.v)} 張`} />
-        <Mini label="融資餘額" value={s.mg ? `${comma(s.mg[0])} 張` : '-'} />
+        <Mini label="成交量（張）" value={comma(s.v)} />
+        <Mini label="融資（張）" value={s.mg ? comma(s.mg[0]) : '-'} />
         <Mini label="融資 5 日" value={pct(s.mg?.[1])} color={tone(s.mg?.[1])} />
         <Mini label="大戶持股" value={s.big ? `${s.big[0]}%` : '-'} />
       </View>
