@@ -42,3 +42,4 @@ yarn-error.*
 
 # 本機網頁預覽用的資料
 /public/latest.json
+/public/stocks.json
