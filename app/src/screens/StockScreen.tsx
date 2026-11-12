@@ -15,7 +15,7 @@ type SortKey = 'rank' | 'p' | 'flow5';
 const SORTS: { k: SortKey; label: string }[] = [{ k: 'rank', label: '排名' }, { k: 'p', label: '今日漲跌' }, { k: 'flow5', label: '法人 5 日' }];
 
 // 排行：by 回傳的數字越大排越前面
-const flowNote = (s: StockRow) => `法人 5 日買賣超佔成交量 ${pct(s.i5)}`;
+const flowNote = (s: StockRow) => `法人 5 日 ${pct(s.i5)}`;
 const RANKS: { k: string; label: string; by: (s: StockRow) => number; note?: (s: StockRow) => string }[] = [
   { k: 'buy', label: '法人買超', by: (s) => s.i5, note: flowNote },
   { k: 'sell', label: '法人賣超', by: (s) => -s.i5, note: flowNote },
@@ -120,8 +120,10 @@ function Chip({ text, color, onPress }: { text: string; color?: string; onPress:
   );
 }
 
-// 和前一個交易日相比，今天才出現的標籤與警訊。點一下就搜尋那一檔或那個族群。
+// 和前一個交易日相比，今天才出現的標籤與警訊。平常收成一行，自選股的警訊一律顯示。
+// 點股票或族群就搜尋它。
 function Summary({ d, favs, onPick }: { d: StockData; favs: string[]; onPick: (q: string) => void }) {
+  const [open, setOpen] = useState(false);
   const [more, setMore] = useState<Record<string, boolean>>({});
   const fresh = (tag: string) => Object.keys(d.stocks)
     .filter((c) => d.stocks[c].nt?.includes(tag))
@@ -130,17 +132,28 @@ function Summary({ d, favs, onPick }: { d: StockData; favs: string[]; onPick: (q
   const changed = d.sectors.filter((s) => s.was !== undefined);
   const mine = favs.filter((c) => d.stocks[c]?.nt?.length || d.stocks[c]?.na?.length);
   const cut = <T,>(key: string, list: T[], n: number) => (more[key] ? list : list.slice(0, n));
-  const all = (key: string, total: number, n: number) => (total > n && !more[key]
-    ? <Chip text={`全部 ${total} 個`} color={C.cyan} onPress={() => setMore({ ...more, [key]: true })} /> : null);
+  const all = (key: string, total: number, n: number, unit: string) => (total > n && !more[key]
+    ? <Chip text={`全部 ${total} ${unit}`} color={C.cyan} onPress={() => setMore({ ...more, [key]: true })} /> : null);
   const quiet = !groups.some(([, c]) => c.length) && !changed.length && !mine.length;
   const head = { color: C.mute, fontSize: 12, marginBottom: 6 };
 
   return (
     <View style={[S.card, { padding: 12 }]}>
-      <Text style={[S.label, { marginBottom: 8 }]}>今日變化（和前一個交易日比）</Text>
-      {quiet ? <Text style={S.note}>沒有新出現的標籤。</Text> : null}
+      <Pressable onPress={() => setOpen(!open)} accessibilityRole="button" accessibilityState={{ expanded: open }} style={S.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={S.label}>今日變化（和前一個交易日比）</Text>
+          <Text style={{ color: C.fg, fontSize: 13.5, marginTop: 5 }}>
+            {quiet ? '沒有新出現的標籤' : (
+              <>
+                新大戶進 <Text style={{ color: TAG_COLOR.大戶進, fontFamily: MONO }}>{groups[0][1].length}</Text>・新大戶跑 <Text style={{ color: TAG_COLOR.大戶跑, fontFamily: MONO }}>{groups[1][1].length}</Text>・族群變動 <Text style={{ fontFamily: MONO }}>{changed.length}</Text>
+              </>
+            )}
+          </Text>
+        </View>
+        {quiet ? null : <Chevron open={open} />}
+      </Pressable>
       {mine.length ? (
-        <View style={{ marginBottom: 6 }}>
+        <View style={{ marginTop: 10 }}>
           <Text style={head}>自選股</Text>
           {mine.map((c) => (
             <Pressable key={c} onPress={() => onPick(c)} style={{ paddingVertical: 3 }}>
@@ -151,23 +164,24 @@ function Summary({ d, favs, onPick }: { d: StockData; favs: string[]; onPick: (q
           ))}
         </View>
       ) : null}
-      {groups.map(([tag, codes]) => (codes.length ? (
+      {open ? <View style={{ height: 10 }} /> : null}
+      {open && groups.map(([tag, codes]) => (codes.length ? (
         <View key={tag}>
           <Text style={head}>新出現 <Text style={{ color: TAG_COLOR[tag] }}>{tag}</Text>　{codes.length} 檔</Text>
           <View style={[S.row, { flexWrap: 'wrap' }]}>
             {cut(tag, codes, 8).map((c) => <Chip key={c} text={d.stocks[c].n} onPress={() => onPick(c)} />)}
-            {all(tag, codes.length, 8)}
+            {all(tag, codes.length, 8, '檔')}
           </View>
         </View>
       ) : null))}
-      {changed.length ? (
+      {open && changed.length ? (
         <View>
           <Text style={head}>族群標籤改變　{changed.length} 個</Text>
           <View style={[S.row, { flexWrap: 'wrap' }]}>
             {cut('sec', changed, 4).map((s) => (
               <Chip key={s.id} text={`${s.name}：${s.was ?? '無'} → ${s.tag ?? '無'}`} color={s.tag ? TAG_COLOR[s.tag] : C.mute} onPress={() => onPick(s.name)} />
             ))}
-            {all('sec', changed.length, 4)}
+            {all('sec', changed.length, 4, '個')}
           </View>
         </View>
       ) : null}
@@ -338,12 +352,11 @@ export default function StockScreen({ d, favs, onFav }: { d: StockData; favs: st
             ) : null}
           </View>
 
-          <Summary d={d} favs={favs} onPick={pick} />
-
           <View style={[S.row, { marginBottom: 4 }]}>
             <Btn label="族群" on={view === 'sectors'} onPress={() => setView('sectors')} />
             <Btn label="個股排行" on={view === 'rank'} onPress={() => setView('rank')} />
           </View>
+          {view === 'sectors' ? <Summary d={d} favs={favs} onPick={pick} /> : null}
         </>
       )}
 
@@ -352,7 +365,7 @@ export default function StockScreen({ d, favs, onFav }: { d: StockData; favs: st
           <View style={[S.row, { flexWrap: 'wrap', marginBottom: 4 }]}>
             {RANKS.map((r) => <Btn key={r.k} label={r.label} on={rankBy === r.k} onPress={() => setRankBy(r.k)} />)}
           </View>
-          <Text style={[S.note, { marginBottom: 8 }]}>族群裡 {Object.keys(d.stocks).length} 檔的前 {TOP} 名。</Text>
+          <Text style={[S.note, { marginBottom: 8 }]}>族群裡 {Object.keys(d.stocks).length} 檔的前 {TOP} 名。法人 5 日是三大法人近 5 日買賣超佔成交量的比例。</Text>
           <ListHead />
           {ranked.codes.map((code, i) => {
             const k = `rank:${code}`;
